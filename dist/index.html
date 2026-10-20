@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071410">
+  <meta name="description" content="Live station camera and real-time train arrivals for San Juan Capistrano.">
+  <title>San Juan Capistrano · Live Trains</title>
+  <style>
+    :root {
+      --ink: #f5f1e7;
+      --muted: #a7b1aa;
+      --panel: #0d1d17;
+      --panel-2: #11271f;
+      --line: rgba(255,255,255,.12);
+      --gold: #f3c356;
+      --green: #70d6a7;
+      --amber: #ffcc66;
+      --red: #ff8075;
+      --shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(67, 134, 104, .23), transparent 35rem),
+        linear-gradient(155deg, #06100d 0%, #0b1712 48%, #08100d 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: inherit; }
+    .shell { width: min(1540px, calc(100% - 34px)); margin: 0 auto; padding: 30px 0 40px; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .eyebrow { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; color: var(--gold); font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    .live-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff5f56; box-shadow: 0 0 0 5px rgba(255,95,86,.12); animation: pulse 1.8s infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(255,95,86,0); } }
+    h1 { margin: 0; font: 600 clamp(30px, 4vw, 54px)/.98 Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .clock { flex: none; text-align: right; }
+    .clock strong { display: block; font: 650 28px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.04em; }
+    .clock span { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(340px, .75fr); gap: 18px; align-items: stretch; }
+    .card { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(180deg, rgba(19,40,32,.92), rgba(8,19,15,.96)); box-shadow: var(--shadow); }
+    .video-card { min-height: 0; }
+    .video-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+    .video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .video-meta { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .video-meta strong { color: var(--ink); font-weight: 600; }
+    .board { display: flex; flex-direction: column; min-height: 100%; }
+    .board-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 18px 15px; border-bottom: 1px solid var(--line); }
+    .board-head h2 { margin: 0; font: 650 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .03em; text-transform: uppercase; }
+    .refresh { border: 1px solid var(--line); border-radius: 999px; padding: 8px 11px; color: var(--muted); background: rgba(255,255,255,.035); font: 600 11px/1 ui-sans-serif, system-ui; cursor: pointer; }
+    .refresh:hover { color: var(--ink); border-color: rgba(255,255,255,.28); }
+    .refresh:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    #arrivals { flex: 1; }
+    .arrival { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 13px; align-items: center; padding: 18px; border-bottom: 1px solid var(--line); }
+    .arrival:last-child { border-bottom: 0; }
+    .arrival:first-child { background: linear-gradient(90deg, rgba(243,195,86,.08), transparent 70%); }
+    .time { font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.05em; }
+    .scheduled { display: block; margin-top: 6px; color: var(--muted); font: 500 10px/1.2 ui-sans-serif, system-ui; letter-spacing: 0; }
+    .train { min-width: 0; }
+    .route { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .badge { flex: none; border-radius: 5px; padding: 4px 6px; background: #e36c39; color: white; font: 800 10px/1 ui-monospace, monospace; letter-spacing: .04em; }
+    .badge.pacific { background: #2d6f9c; }
+    .train-number { color: var(--muted); font: 700 11px/1 ui-monospace, monospace; }
+    .destination { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
+    .destination::before { content: "to "; color: var(--muted); font-weight: 450; }
+    .due { min-width: 58px; text-align: right; }
+    .due strong { display: block; color: var(--gold); font: 750 18px/1 ui-monospace, monospace; }
+    .due span { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .status { display: flex; align-items: center; gap: 7px; margin-top: 7px; color: var(--green); font-size: 11px; }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status.delayed { color: var(--amber); }
+    .status.cancelled { color: var(--red); }
+    .state { display: grid; min-height: 330px; place-items: center; padding: 34px; color: var(--muted); text-align: center; }
+    .state strong { display: block; margin-bottom: 8px; color: var(--ink); }
+    .board-foot { display: flex; justify-content: space-between; gap: 16px; padding: 13px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .board-foot a { color: var(--ink); text-decoration-color: rgba(255,255,255,.3); text-underline-offset: 3px; }
+    .mobile-note { display: none; }
+    @media (max-width: 900px) {
+      .shell { width: min(100% - 22px, 720px); padding-top: 20px; }
+      header { align-items: start; }
+      .clock { display: none; }
+      .grid { grid-template-columns: 1fr; }
+      .arrival { grid-template-columns: 74px minmax(0, 1fr) auto; }
+      .mobile-note { display: inline; }
+    }
+    @media (max-width: 520px) {
+      h1 { font-size: 34px; }
+      .subtitle { max-width: 290px; }
+      .arrival { padding: 16px 14px; grid-template-columns: 66px minmax(0, 1fr) 52px; gap: 10px; }
+      .board-head, .board-foot { padding-left: 14px; padding-right: 14px; }
+      .video-meta { align-items: start; flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <div class="eyebrow"><span class="live-dot"></span> Live station watch</div>
+        <h1>San Juan Capistrano</h1>
+        <p class="subtitle">Trackside camera + the next trains due at the station</p>
+      </div>
+      <div class="clock" aria-live="off"><strong id="clock">—:—</strong><span>Pacific time</span></div>
+    </header>
+
+    <section class="grid" aria-label="Station camera and upcoming trains">
+      <article class="card video-card">
+        <div class="video-wrap">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/-g1qAvXyIyQ?autoplay=1&mute=1&playsinline=1&rel=0"
+            title="Live camera at San Juan Capistrano train station"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowfullscreen
+            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div>
+        <div class="video-meta">
+          <span><strong>Trackside live stream</strong> · YouTube</span>
+          <a href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a>
+        </div>
+      </article>
+
+      <aside class="card board" aria-label="Upcoming train arrivals">
+        <div class="board-head">
+          <h2>Next trains</h2>
+          <button class="refresh" id="refresh" type="button">Refresh</button>
+        </div>
+        <div id="arrivals" aria-live="polite">
+          <div class="state"><div><strong>Checking the signal…</strong>Loading current arrival estimates.</div></div>
+        </div>
+        <div class="board-foot">
+          <span id="updated">Live estimates refresh every 60 seconds.</span>
+          <a href="https://metrolinktrains.com/train_status/#tab=train%20status&amp;filter=station&amp;option=San%20Juan%20Capistrano" target="_blank" rel="noreferrer">Metrolink details ↗</a>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const FEED = 'https://rtt.metrolinktrains.com/stationschedulelist.json';
+    const STATION_KEYS = new Set(['SANJUANCAPISTRANO', 'SAN JUAN CAPISTRANO']);
+    const arrivals = document.querySelector('#arrivals');
+    const updated = document.querySelector('#updated');
+    const refresh = document.querySelector('#refresh');
+
+    const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const epoch = value => {
+      const match = String(value || '').match(/Date\((\d+)/);
+      return match ? Number(match[1]) : NaN;
+    };
+    const routeLabel = code => code === 'PAC SURF' ? 'Pacific Surfliner' : code.replace(' LINE', '').replace('OC', 'Orange County');
+    const trainLabel = train => String(train.TrainDesignation || '').replace(/^M/, '').replace(/[NS]$/, '');
+    const statusText = status => {
+      const key = String(status || '').toUpperCase();
+      if (key === 'ON TIME') return 'Within 5 min of schedule';
+      if (key === 'DELAYED') return '5–20 min behind schedule';
+      if (key === 'EXTENDED DELAYED') return 'More than 20 min late';
+      if (key === 'CANCELLED') return 'Cancelled';
+      return status || 'Estimate available';
+    };
+    const statusClass = status => /CANCELLED/i.test(status) ? 'cancelled' : /DELAYED/i.test(status) ? 'delayed' : '';
+    const minutesAway = timestamp => Math.max(0, Math.round((timestamp - Date.now()) / 60000));
+
+    function updateClock() {
+      document.querySelector('#clock').textContent = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', second: '2-digit'
+      }).format(new Date());
+    }
+
+    function render(trains) {
+      if (!trains.length) {
+        arrivals.innerHTML = '<div class="state"><div><strong>No trains in the next two hours</strong>Check the full Metrolink schedule for later service.</div></div>';
+        return;
+      }
+      arrivals.innerHTML = trains.slice(0, 6).map((train, index) => {
+        const estimate = epoch(train.CalcTrainMovementTime);
+        const scheduled = epoch(train.TrainMovementTime);
+        const due = minutesAway(estimate);
+        const isPacific = train.RouteCode === 'PAC SURF';
+        const scheduledNote = Number.isFinite(scheduled) && Math.abs(estimate - scheduled) >= 60000
+          ? `<span class="scheduled">sched ${esc(train.FormattedTrainMovementTime)}</span>` : '';
+        return `<article class="arrival" ${index === 0 ? 'aria-label="Next train"' : ''}>
+          <div class="time">${esc(train.FormattedCalcTrainMovementTime)}${scheduledNote}</div>
+          <div class="train">
+            <div class="route"><span class="badge ${isPacific ? 'pacific' : ''}">${esc(routeLabel(train.RouteCode))}</span><span class="train-number">#${esc(trainLabel(train))}</span></div>
+            <div class="destination" title="${esc(train.TrainDestination)}">${esc(train.TrainDestination)}</div>
+            <div class="status ${statusClass(train.CalculatedStatus)}">${esc(statusText(train.CalculatedStatus))} · ${esc(train.FormattedTrackDesignation || 'Track TBD')}</div>
+          </div>
+          <div class="due"><strong>${due <= 0 ? 'Due' : due}</strong><span>${due <= 0 ? 'now' : 'min'}</span></div>
+        </article>`;
+      }).join('');
+    }
+
+    async function loadArrivals() {
+      refresh.disabled = true;
+      refresh.textContent = 'Refreshing…';
+      try {
+        const response = await fetch(`${FEED}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const now = Date.now() - 2 * 60 * 1000;
+        const cutoff = Date.now() + 2 * 60 * 60 * 1000;
+        const seen = new Set();
+        const stationTrains = data
+          .filter(item => STATION_KEYS.has(String(item.PlatformName || '').toUpperCase().replace(/[-_]/g, ' ')) || String(item.PlatformName || '').toUpperCase().replace(/[\s-_]/g, '') === 'SANJUANCAPISTRANO')
+          .filter(item => Number.isFinite(epoch(item.CalcTrainMovementTime)))
+          .filter(item => epoch(item.CalcTrainMovementTime) >= now && epoch(item.CalcTrainMovementTime) <= cutoff)
+          .sort((a, b) => epoch(a.CalcTrainMovementTime) - epoch(b.CalcTrainMovementTime))
+          .filter(item => {
+            const key = item.TrainDesignation;
+            if (seen.has(key)) return false;
+            seen.add(key); return true;
+          });
+        render(stationTrains);
+        const stamp = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date());
+        updated.textContent = `Updated ${stamp} · auto-refreshes every 60 sec`;
+      } catch (error) {
+        arrivals.innerHTML = '<div class="state"><div><strong>Live arrivals are temporarily unavailable</strong>Use “Metrolink details” below for the official tracker.</div></div>';
+        updated.textContent = 'Could not reach the live feed. Try Refresh.';
+      } finally {
+        refresh.disabled = false;
+        refresh.textContent = 'Refresh';
+      }
+    }
+
+    refresh.addEventListener('click', loadArrivals);
+    updateClock();
+    loadArrivals();
+    setInterval(updateClock, 1000);
+    setInterval(loadArrivals, 60_000);
+  </script>
+</body>
+</html>
