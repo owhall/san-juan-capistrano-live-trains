@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071410">
-  <meta name="description" content="Live station camera and real-time train arrivals for San Juan Capistrano.">
-  <title>San Juan Capistrano · Live Trains</title>
+  <meta name="description" content="Live station cameras and real-time train arrivals for San Juan Capistrano and Fullerton.">
+  <title>Southern California · Live Trains</title>
   <style>
     :root {
       --ink: #f5f1e7;
@@ -41,6 +41,11 @@
     .clock { flex: none; text-align: right; }
     .clock strong { display: block; font: 650 28px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.04em; }
     .clock span { color: var(--muted); font-size: 12px; }
+    .station-nav { display: inline-flex; gap: 5px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--line); border-radius: 999px; background: rgba(0,0,0,.18); }
+    .station-nav button { border: 0; border-radius: 999px; padding: 10px 15px; color: var(--muted); background: transparent; font: 700 12px/1 ui-sans-serif, system-ui; cursor: pointer; }
+    .station-nav button:hover { color: var(--ink); }
+    .station-nav button[aria-selected="true"] { color: #152017; background: var(--gold); box-shadow: 0 4px 16px rgba(243,195,86,.2); }
+    .station-nav button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(340px, .75fr); gap: 18px; align-items: stretch; }
     .card { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(180deg, rgba(19,40,32,.92), rgba(8,19,15,.96)); box-shadow: var(--shadow); }
     .video-card { min-height: 0; }
@@ -102,16 +107,21 @@
     <header>
       <div>
         <div class="eyebrow"><span class="live-dot"></span> Live station watch</div>
-        <h1>San Juan Capistrano</h1>
+        <h1 id="station-name">San Juan Capistrano</h1>
         <p class="subtitle">Trackside camera + the next trains due at the station</p>
       </div>
       <div class="clock" aria-live="off"><strong id="clock">—:—</strong><span>Pacific time</span></div>
     </header>
 
+    <nav class="station-nav" aria-label="Choose a station" role="tablist">
+      <button type="button" role="tab" data-station="san-juan-capistrano" aria-selected="true">San Juan Capistrano</button>
+      <button type="button" role="tab" data-station="fullerton" aria-selected="false">Fullerton</button>
+    </nav>
+
     <section class="grid" aria-label="Station camera and upcoming trains">
       <article class="card video-card">
         <div class="video-wrap">
-          <iframe
+          <iframe id="station-video"
             src="https://www.youtube-nocookie.com/embed/-g1qAvXyIyQ?autoplay=1&mute=1&playsinline=1&rel=0"
             title="Live camera at San Juan Capistrano train station"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
@@ -120,7 +130,7 @@
         </div>
         <div class="video-meta">
           <span><strong>Trackside live stream</strong> · YouTube</span>
-          <a href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a>
+          <a id="stream-link" href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a>
         </div>
       </article>
 
@@ -134,7 +144,7 @@
         </div>
         <div class="board-foot">
           <span id="updated">Live estimates refresh every 60 seconds.</span>
-          <a href="https://metrolinktrains.com/train_status/#tab=train%20status&amp;filter=station&amp;option=San%20Juan%20Capistrano" target="_blank" rel="noreferrer">Metrolink details ↗</a>
+          <a id="status-link" href="https://metrolinktrains.com/train_status/#tab=train%20status&amp;filter=station&amp;option=San%20Juan%20Capistrano" target="_blank" rel="noreferrer">Metrolink details ↗</a>
         </div>
       </aside>
     </section>
@@ -142,10 +152,32 @@
 
   <script>
     const FEED = 'https://rtt.metrolinktrains.com/stationschedulelist.json';
-    const STATION_KEYS = new Set(['SANJUANCAPISTRANO', 'SAN JUAN CAPISTRANO']);
+    const STATIONS = {
+      'san-juan-capistrano': {
+        name: 'San Juan Capistrano',
+        feedKey: 'SANJUANCAPISTRANO',
+        videoId: '-g1qAvXyIyQ',
+        streamUrl: 'https://www.youtube.com/watch?v=-g1qAvXyIyQ',
+        statusUrl: 'https://metrolinktrains.com/train_status/#tab=train%20status&filter=station&option=San%20Juan%20Capistrano'
+      },
+      fullerton: {
+        name: 'Fullerton',
+        feedKey: 'FULLERTON',
+        videoId: 'oKwiQBAkEVU',
+        streamUrl: 'https://www.youtube.com/watch?v=oKwiQBAkEVU',
+        statusUrl: 'https://metrolinktrains.com/train_status/#tab=train%20status&filter=station&option=Fullerton'
+      }
+    };
+    const requestedStation = new URLSearchParams(location.search).get('station');
+    let stationId = STATIONS[requestedStation] ? requestedStation : 'san-juan-capistrano';
     const arrivals = document.querySelector('#arrivals');
     const updated = document.querySelector('#updated');
     const refresh = document.querySelector('#refresh');
+    const stationName = document.querySelector('#station-name');
+    const stationVideo = document.querySelector('#station-video');
+    const streamLink = document.querySelector('#stream-link');
+    const statusLink = document.querySelector('#status-link');
+    const stationButtons = [...document.querySelectorAll('[data-station]')];
 
     const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
     const epoch = value => {
@@ -164,6 +196,28 @@
     };
     const statusClass = status => /CANCELLED/i.test(status) ? 'cancelled' : /DELAYED/i.test(status) ? 'delayed' : '';
     const minutesAway = timestamp => Math.max(0, Math.round((timestamp - Date.now()) / 60000));
+    const normalizeStation = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    function selectStation(nextId, updateUrl = true) {
+      if (!STATIONS[nextId]) return;
+      stationId = nextId;
+      const station = STATIONS[stationId];
+      stationName.textContent = station.name;
+      document.title = `${station.name} · Live Trains`;
+      stationVideo.title = `Live camera at ${station.name} train station`;
+      stationVideo.src = `https://www.youtube-nocookie.com/embed/${station.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`;
+      streamLink.href = station.streamUrl;
+      statusLink.href = station.statusUrl;
+      stationButtons.forEach(button => button.setAttribute('aria-selected', String(button.dataset.station === stationId)));
+      if (updateUrl) {
+        const url = new URL(location.href);
+        if (stationId === 'san-juan-capistrano') url.searchParams.delete('station');
+        else url.searchParams.set('station', stationId);
+        history.replaceState({}, '', url);
+      }
+      arrivals.innerHTML = `<div class="state"><div><strong>Checking ${esc(station.name)}…</strong>Loading current arrival estimates.</div></div>`;
+      loadArrivals();
+    }
 
     function updateClock() {
       document.querySelector('#clock').textContent = new Intl.DateTimeFormat('en-US', {
@@ -205,8 +259,9 @@
         const now = Date.now() - 2 * 60 * 1000;
         const cutoff = Date.now() + 2 * 60 * 60 * 1000;
         const seen = new Set();
+        const activeStation = STATIONS[stationId];
         const stationTrains = data
-          .filter(item => STATION_KEYS.has(String(item.PlatformName || '').toUpperCase().replace(/[-_]/g, ' ')) || String(item.PlatformName || '').toUpperCase().replace(/[\s-_]/g, '') === 'SANJUANCAPISTRANO')
+          .filter(item => normalizeStation(item.PlatformName) === activeStation.feedKey)
           .filter(item => Number.isFinite(epoch(item.CalcTrainMovementTime)))
           .filter(item => epoch(item.CalcTrainMovementTime) >= now && epoch(item.CalcTrainMovementTime) <= cutoff)
           .sort((a, b) => epoch(a.CalcTrainMovementTime) - epoch(b.CalcTrainMovementTime))
@@ -228,8 +283,9 @@
     }
 
     refresh.addEventListener('click', loadArrivals);
+    stationButtons.forEach(button => button.addEventListener('click', () => selectStation(button.dataset.station)));
     updateClock();
-    loadArrivals();
+    selectStation(stationId, false);
     setInterval(updateClock, 1000);
     setInterval(loadArrivals, 60_000);
   </script>

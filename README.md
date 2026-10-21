@@ -1,11 +1,12 @@
 # San Juan Capistrano Live Trains
 
-A responsive live dashboard that pairs the San Juan Capistrano station camera with real-time train arrivals, countdowns, delay status, and track information.
+A responsive live dashboard that pairs station cameras at San Juan Capistrano and Fullerton with real-time train arrivals, countdowns, delay status, and track information.
 
 ## Features
 
-- Embedded Virtual Railfan YouTube livestream
-- Metrolink and Pacific Surfliner arrivals for San Juan Capistrano
+- Switchable San Juan Capistrano and Fullerton station views
+- Embedded YouTube livestream for each station
+- Metrolink and Pacific Surfliner arrivals filtered to the selected station
 - Estimated arrival times and minute-by-minute countdowns
 - Schedule variance, service status, destination, and track details
 - Automatic refresh every 60 seconds
@@ -14,6 +15,7 @@ A responsive live dashboard that pairs the San Juan Capistrano station camera wi
 ## Data sources
 
 - [San Juan Capistrano live camera](https://www.youtube.com/watch?v=-g1qAvXyIyQ)
+- [Fullerton live camera](https://www.youtube.com/watch?v=oKwiQBAkEVU)
 - [Metrolink Train Tracker](https://metrolinktrains.com/train_status/#tab=train%20status&filter=station&option=San%20Juan%20Capistrano)
 
 Arrival estimates come from Metrolink's public real-time station schedule feed. They are estimates and may change.
