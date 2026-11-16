@@ -53,6 +53,12 @@
     .video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
     .video-meta { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     .video-meta strong { color: var(--ink); font-weight: 600; }
+    .video-copy { display: grid; gap: 4px; }
+    #playback-status { font-size: 10px; line-height: 1.35; }
+    .video-actions { display: flex; align-items: center; gap: 11px; }
+    .live-button { border: 1px solid rgba(243,195,86,.4); border-radius: 999px; padding: 7px 10px; color: var(--gold); background: rgba(243,195,86,.08); font: 700 10px/1 ui-sans-serif, system-ui; cursor: pointer; }
+    .live-button:hover { background: rgba(243,195,86,.15); }
+    .live-button[hidden] { display: none; }
     .board { display: flex; flex-direction: column; min-height: 100%; }
     .board-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 18px 15px; border-bottom: 1px solid var(--line); }
     .board-head h2 { margin: 0; font: 650 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .03em; text-transform: uppercase; }
@@ -60,9 +66,15 @@
     .refresh:hover { color: var(--ink); border-color: rgba(255,255,255,.28); }
     .refresh:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     #arrivals { flex: 1; }
-    .arrival { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 13px; align-items: center; padding: 18px; border-bottom: 1px solid var(--line); }
+    .arrival { display: grid; width: 100%; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 13px; align-items: center; padding: 18px; border: 0; border-bottom: 1px solid var(--line); color: inherit; background: transparent; text-align: left; font: inherit; }
     .arrival:last-child { border-bottom: 0; }
-    .arrival:first-child { background: linear-gradient(90deg, rgba(243,195,86,.08), transparent 70%); }
+    .arrival.next { background: linear-gradient(90deg, rgba(243,195,86,.08), transparent 70%); }
+    button.arrival.replay { cursor: pointer; }
+    button.arrival.replay:hover { background: rgba(255,255,255,.045); }
+    button.arrival.replay:focus-visible { position: relative; outline: 2px solid var(--gold); outline-offset: -3px; }
+    .group-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); color: var(--muted); background: rgba(0,0,0,.18); font: 750 10px/1 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .group-title span { color: #78867f; font: 500 9px/1 ui-sans-serif, system-ui; letter-spacing: .02em; text-transform: none; }
+    .recent-empty { padding: 15px 18px; color: #78867f; font-size: 11px; line-height: 1.4; }
     .time { font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.05em; }
     .scheduled { display: block; margin-top: 6px; color: var(--muted); font: 500 10px/1.2 ui-sans-serif, system-ui; letter-spacing: 0; }
     .train { min-width: 0; }
@@ -75,6 +87,8 @@
     .due { min-width: 58px; text-align: right; }
     .due strong { display: block; color: var(--gold); font: 750 18px/1 ui-monospace, monospace; }
     .due span { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .due.past strong { color: var(--muted); font-size: 14px; }
+    .due.past span { color: var(--gold); }
     .status { display: flex; align-items: center; gap: 7px; margin-top: 7px; color: var(--green); font-size: 11px; }
     .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
     .status.delayed { color: var(--amber); }
@@ -121,22 +135,17 @@
     <section class="grid" aria-label="Station camera and upcoming trains">
       <article class="card video-card">
         <div class="video-wrap">
-          <iframe id="station-video"
-            src="https://www.youtube-nocookie.com/embed/-g1qAvXyIyQ?autoplay=1&mute=1&playsinline=1&rel=0"
-            title="Live camera at San Juan Capistrano train station"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowfullscreen
-            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+          <div id="station-video"></div>
         </div>
         <div class="video-meta">
-          <span><strong>Trackside live stream</strong> · YouTube</span>
-          <a id="stream-link" href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a>
+          <span class="video-copy"><span><strong>Trackside live stream</strong> · YouTube</span><span id="playback-status" aria-live="polite">Choose a recent train to replay its arrival.</span></span>
+          <span class="video-actions"><button class="live-button" id="go-live" type="button" hidden>Go live</button><a id="stream-link" href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a></span>
         </div>
       </article>
 
       <aside class="card board" aria-label="Upcoming train arrivals">
         <div class="board-head">
-          <h2>Next trains</h2>
+          <h2>Trains</h2>
           <button class="refresh" id="refresh" type="button">Refresh</button>
         </div>
         <div id="arrivals" aria-live="polite">
@@ -152,6 +161,10 @@
 
   <script>
     const FEED = 'https://rtt.metrolinktrains.com/stationschedulelist.json';
+    const RECENT_WINDOW = 2 * 60 * 60 * 1000;
+    const UPCOMING_WINDOW = 2 * 60 * 60 * 1000;
+    const REPLAY_LEAD_SECONDS = 30;
+    const HISTORY_KEY = 'southern-california-live-trains-history-v1';
     const STATIONS = {
       'san-juan-capistrano': {
         name: 'San Juan Capistrano',
@@ -174,10 +187,16 @@
     const updated = document.querySelector('#updated');
     const refresh = document.querySelector('#refresh');
     const stationName = document.querySelector('#station-name');
-    const stationVideo = document.querySelector('#station-video');
     const streamLink = document.querySelector('#stream-link');
     const statusLink = document.querySelector('#status-link');
+    const playbackStatus = document.querySelector('#playback-status');
+    const goLive = document.querySelector('#go-live');
     const stationButtons = [...document.querySelectorAll('[data-station]')];
+    let player;
+    let playerReady = false;
+    let pendingReplay = null;
+    let replayAttempt = 0;
+    let trainHistory = readTrainHistory();
 
     const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
     const epoch = value => {
@@ -196,7 +215,101 @@
     };
     const statusClass = status => /CANCELLED/i.test(status) ? 'cancelled' : /DELAYED/i.test(status) ? 'delayed' : '';
     const minutesAway = timestamp => Math.max(0, Math.round((timestamp - Date.now()) / 60000));
+    const minutesAgo = timestamp => Math.max(1, Math.round((Date.now() - timestamp) / 60000));
     const normalizeStation = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    function readTrainHistory() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(HISTORY_KEY));
+        return saved && typeof saved === 'object' ? saved : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function trainKey(train) {
+      return `${train.TrainDesignation}|${epoch(train.TrainMovementTime)}`;
+    }
+
+    function rememberTrains(activeStationId, currentTrains) {
+      const oldest = Date.now() - RECENT_WINDOW;
+      const latest = Date.now() + UPCOMING_WINDOW;
+      const remembered = new Map((trainHistory[activeStationId] || []).map(train => [trainKey(train), train]));
+      currentTrains.forEach(train => remembered.set(trainKey(train), train));
+      const trains = [...remembered.values()]
+        .filter(train => {
+          const time = epoch(train.CalcTrainMovementTime);
+          return Number.isFinite(time) && time >= oldest && time <= latest;
+        })
+        .sort((a, b) => epoch(a.CalcTrainMovementTime) - epoch(b.CalcTrainMovementTime));
+      trainHistory[activeStationId] = trains;
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(trainHistory));
+      } catch (_) {
+        // In-memory history still works when local storage is unavailable.
+      }
+      return trains;
+    }
+
+    function videoPlayerOptions(videoId) {
+      return {
+        videoId,
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0 },
+        events: {
+          onReady: event => {
+            playerReady = true;
+            event.target.mute();
+            event.target.playVideo();
+            if (pendingReplay) {
+              const replay = pendingReplay;
+              pendingReplay = null;
+              replayArrival(replay.timestamp, replay.label);
+            }
+          }
+        }
+      };
+    }
+
+    window.onYouTubeIframeAPIReady = () => {
+      player = new YT.Player('station-video', videoPlayerOptions(STATIONS[stationId].videoId));
+    };
+
+    function replayArrival(timestamp, label) {
+      if (!playerReady || !player) {
+        pendingReplay = { timestamp, label };
+        playbackStatus.textContent = 'Preparing the camera replay…';
+        return;
+      }
+      const secondsBack = ((Date.now() - timestamp) / 1000) + REPLAY_LEAD_SECONDS;
+      const duration = player.getDuration();
+      const seekTarget = duration - secondsBack;
+      if (!Number.isFinite(duration) || duration <= 0 || seekTarget < 0) {
+        playbackStatus.textContent = 'That arrival is earlier than this camera session.';
+        return;
+      }
+      player.seekTo(Math.max(0, seekTarget), true);
+      player.playVideo();
+      goLive.hidden = false;
+      playbackStatus.textContent = `Replaying ${label}, starting 30 seconds before its estimated arrival.`;
+      const attempt = ++replayAttempt;
+      setTimeout(() => {
+        if (attempt !== replayAttempt || !playerReady) return;
+        const currentTime = player.getCurrentTime();
+        if (Number.isFinite(currentTime) && Math.abs(currentTime - seekTarget) > 120) {
+          playbackStatus.textContent = 'YouTube could not reach that moment. The footage may be outside the available DVR window.';
+        }
+      }, 6000);
+    }
+
+    function returnToLive() {
+      if (!playerReady || !player) return;
+      replayAttempt += 1;
+      player.seekTo(player.getDuration(), true);
+      player.playVideo();
+      goLive.hidden = true;
+      playbackStatus.textContent = 'Live camera. Choose a recent train to replay its arrival.';
+    }
 
     function selectStation(nextId, updateUrl = true) {
       if (!STATIONS[nextId]) return;
@@ -204,10 +317,16 @@
       const station = STATIONS[stationId];
       stationName.textContent = station.name;
       document.title = `${station.name} · Live Trains`;
-      stationVideo.title = `Live camera at ${station.name} train station`;
-      stationVideo.src = `https://www.youtube-nocookie.com/embed/${station.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`;
       streamLink.href = station.streamUrl;
       statusLink.href = station.statusUrl;
+      pendingReplay = null;
+      replayAttempt += 1;
+      goLive.hidden = true;
+      playbackStatus.textContent = 'Choose a recent train to replay its arrival.';
+      if (playerReady && player) {
+        player.loadVideoById(station.videoId);
+        player.mute();
+      }
       stationButtons.forEach(button => button.setAttribute('aria-selected', String(button.dataset.station === stationId)));
       if (updateUrl) {
         const url = new URL(location.href);
@@ -225,28 +344,45 @@
       }).format(new Date());
     }
 
+    function trainMarkup(train, index, isRecent = false) {
+      const estimate = epoch(train.CalcTrainMovementTime);
+      const scheduled = epoch(train.TrainMovementTime);
+      const due = minutesAway(estimate);
+      const ago = minutesAgo(estimate);
+      const isPacific = train.RouteCode === 'PAC SURF';
+      const scheduledNote = Number.isFinite(scheduled) && Math.abs(estimate - scheduled) >= 60000
+        ? `<span class="scheduled">sched ${esc(train.FormattedTrainMovementTime)}</span>` : '';
+      const tag = isRecent ? 'button' : 'article';
+      const replayAttributes = isRecent
+        ? `type="button" data-replay-time="${estimate}" data-replay-label="${esc(routeLabel(train.RouteCode))} #${esc(trainLabel(train))}" aria-label="Replay ${esc(routeLabel(train.RouteCode))} ${esc(trainLabel(train))} at ${esc(train.FormattedCalcTrainMovementTime)}"`
+        : (index === 0 ? 'aria-label="Next train"' : '');
+      const dueMarkup = isRecent
+        ? `<div class="due past"><strong>${ago} min</strong><span>Replay</span></div>`
+        : `<div class="due"><strong>${due <= 0 ? 'Due' : due}</strong><span>${due <= 0 ? 'now' : 'min'}</span></div>`;
+      return `<${tag} class="arrival ${isRecent ? 'replay' : index === 0 ? 'next' : ''}" ${replayAttributes}>
+        <div class="time">${esc(train.FormattedCalcTrainMovementTime)}${scheduledNote}</div>
+        <div class="train">
+          <div class="route"><span class="badge ${isPacific ? 'pacific' : ''}">${esc(routeLabel(train.RouteCode))}</span><span class="train-number">#${esc(trainLabel(train))}</span></div>
+          <div class="destination" title="${esc(train.TrainDestination)}">${esc(train.TrainDestination)}</div>
+          <div class="status ${statusClass(train.CalculatedStatus)}">${esc(statusText(train.CalculatedStatus))} · ${esc(train.FormattedTrackDesignation || 'Track TBD')}</div>
+        </div>
+        ${dueMarkup}
+      </${tag}>`;
+    }
+
     function render(trains) {
-      if (!trains.length) {
+      const recent = trains.filter(train => epoch(train.CalcTrainMovementTime) < Date.now() - 2 * 60 * 1000 && !/CANCELLED/i.test(train.CalculatedStatus)).reverse().slice(0, 4);
+      const upcoming = trains.filter(train => epoch(train.CalcTrainMovementTime) >= Date.now() - 2 * 60 * 1000).slice(0, 6);
+      if (!recent.length && !upcoming.length) {
         arrivals.innerHTML = '<div class="state"><div><strong>No trains in the next two hours</strong>Check the full Metrolink schedule for later service.</div></div>';
         return;
       }
-      arrivals.innerHTML = trains.slice(0, 6).map((train, index) => {
-        const estimate = epoch(train.CalcTrainMovementTime);
-        const scheduled = epoch(train.TrainMovementTime);
-        const due = minutesAway(estimate);
-        const isPacific = train.RouteCode === 'PAC SURF';
-        const scheduledNote = Number.isFinite(scheduled) && Math.abs(estimate - scheduled) >= 60000
-          ? `<span class="scheduled">sched ${esc(train.FormattedTrainMovementTime)}</span>` : '';
-        return `<article class="arrival" ${index === 0 ? 'aria-label="Next train"' : ''}>
-          <div class="time">${esc(train.FormattedCalcTrainMovementTime)}${scheduledNote}</div>
-          <div class="train">
-            <div class="route"><span class="badge ${isPacific ? 'pacific' : ''}">${esc(routeLabel(train.RouteCode))}</span><span class="train-number">#${esc(trainLabel(train))}</span></div>
-            <div class="destination" title="${esc(train.TrainDestination)}">${esc(train.TrainDestination)}</div>
-            <div class="status ${statusClass(train.CalculatedStatus)}">${esc(statusText(train.CalculatedStatus))} · ${esc(train.FormattedTrackDesignation || 'Track TBD')}</div>
-          </div>
-          <div class="due"><strong>${due <= 0 ? 'Due' : due}</strong><span>${due <= 0 ? 'now' : 'min'}</span></div>
-        </article>`;
-      }).join('');
+      const upcomingMarkup = upcoming.length
+        ? `<div class="group-title">Next trains</div>${upcoming.map((train, index) => trainMarkup(train, index)).join('')}` : '';
+      const recentMarkup = `<div class="group-title">Recent trains <span>Tap to rewind the camera</span></div>${recent.length
+        ? recent.map((train, index) => trainMarkup(train, index, true)).join('')
+        : '<div class="recent-empty">Passed trains will remain here for two hours while this browser captures arrivals.</div>'}`;
+      arrivals.innerHTML = upcomingMarkup + recentMarkup;
     }
 
     async function loadArrivals() {
@@ -256,8 +392,8 @@
         const response = await fetch(`${FEED}?t=${Date.now()}`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        const now = Date.now() - 2 * 60 * 1000;
-        const cutoff = Date.now() + 2 * 60 * 60 * 1000;
+        const now = Date.now() - RECENT_WINDOW;
+        const cutoff = Date.now() + UPCOMING_WINDOW;
         const seen = new Set();
         const activeStation = STATIONS[stationId];
         const stationTrains = data
@@ -270,12 +406,18 @@
             if (seen.has(key)) return false;
             seen.add(key); return true;
           });
-        render(stationTrains);
+        render(rememberTrains(stationId, stationTrains));
         const stamp = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date());
         updated.textContent = `Updated ${stamp} · auto-refreshes every 60 sec`;
       } catch (error) {
-        arrivals.innerHTML = '<div class="state"><div><strong>Live arrivals are temporarily unavailable</strong>Use “Metrolink details” below for the official tracker.</div></div>';
-        updated.textContent = 'Could not reach the live feed. Try Refresh.';
+        const savedTrains = rememberTrains(stationId, []);
+        if (savedTrains.length) {
+          render(savedTrains);
+          updated.textContent = 'Live feed unavailable · showing recently saved estimates.';
+        } else {
+          arrivals.innerHTML = '<div class="state"><div><strong>Live arrivals are temporarily unavailable</strong>Use “Metrolink details” below for the official tracker.</div></div>';
+          updated.textContent = 'Could not reach the live feed. Try Refresh.';
+        }
       } finally {
         refresh.disabled = false;
         refresh.textContent = 'Refresh';
@@ -283,11 +425,18 @@
     }
 
     refresh.addEventListener('click', loadArrivals);
+    goLive.addEventListener('click', returnToLive);
+    arrivals.addEventListener('click', event => {
+      const replay = event.target.closest('[data-replay-time]');
+      if (!replay) return;
+      replayArrival(Number(replay.dataset.replayTime), replay.dataset.replayLabel);
+    });
     stationButtons.forEach(button => button.addEventListener('click', () => selectStation(button.dataset.station)));
     updateClock();
     selectStation(stationId, false);
     setInterval(updateClock, 1000);
     setInterval(loadArrivals, 60_000);
   </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>
