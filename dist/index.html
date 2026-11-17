@@ -59,6 +59,10 @@
     .live-button { border: 1px solid rgba(243,195,86,.4); border-radius: 999px; padding: 7px 10px; color: var(--gold); background: rgba(243,195,86,.08); font: 700 10px/1 ui-sans-serif, system-ui; cursor: pointer; }
     .live-button:hover { background: rgba(243,195,86,.15); }
     .live-button[hidden] { display: none; }
+    .replay-adjustments { display: flex; gap: 5px; }
+    .replay-adjustments[hidden] { display: none; }
+    .replay-skip { border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: 7px 9px; color: var(--ink); background: rgba(255,255,255,.06); font: 700 10px/1 ui-sans-serif, system-ui; cursor: pointer; }
+    .replay-skip:hover { background: rgba(255,255,255,.12); }
     .board { display: flex; flex-direction: column; min-height: 100%; }
     .board-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 18px 15px; border-bottom: 1px solid var(--line); }
     .board-head h2 { margin: 0; font: 650 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .03em; text-transform: uppercase; }
@@ -139,7 +143,7 @@
         </div>
         <div class="video-meta">
           <span class="video-copy"><span><strong>Trackside live stream</strong> · YouTube</span><span id="playback-status" aria-live="polite">Choose a recent train to replay its arrival.</span></span>
-          <span class="video-actions"><button class="live-button" id="go-live" type="button" hidden>Go live</button><a id="stream-link" href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a></span>
+          <span class="video-actions"><span class="replay-adjustments" id="replay-adjustments" hidden><button class="replay-skip" type="button" data-replay-skip="-60">−1 min</button><button class="replay-skip" type="button" data-replay-skip="60">+1 min</button></span><button class="live-button" id="go-live" type="button" hidden>Go live</button><a id="stream-link" href="https://www.youtube.com/watch?v=-g1qAvXyIyQ" target="_blank" rel="noreferrer">Open stream ↗</a></span>
         </div>
       </article>
 
@@ -163,8 +167,7 @@
     const FEED = 'https://rtt.metrolinktrains.com/stationschedulelist.json';
     const RECENT_WINDOW = 2 * 60 * 60 * 1000;
     const UPCOMING_WINDOW = 2 * 60 * 60 * 1000;
-    const REPLAY_LEAD_SECONDS = 30;
-    const MAX_PASSAGE_OBSERVATION_GAP = 3 * 60 * 1000;
+    const REPLAY_LEAD_SECONDS = 0;
     const HISTORY_KEY = 'southern-california-live-trains-history-v1';
     const STATIONS = {
       'san-juan-capistrano': {
@@ -192,11 +195,14 @@
     const statusLink = document.querySelector('#status-link');
     const playbackStatus = document.querySelector('#playback-status');
     const goLive = document.querySelector('#go-live');
+    const replayAdjustments = document.querySelector('#replay-adjustments');
     const stationButtons = [...document.querySelectorAll('[data-station]')];
     let player;
     let playerReady = false;
     let pendingReplay = null;
     let replayAttempt = 0;
+    let replayPosition = null;
+    let replayPositionSetAt = null;
     let trainHistory = readTrainHistory();
 
     const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -232,34 +238,11 @@
       return `${train.TrainDesignation}|${epoch(train.TrainMovementTime)}`;
     }
 
-    function rememberTrains(activeStationId, currentTrains, observeDepartures = true) {
-      const observedAt = Date.now();
-      const oldest = observedAt - RECENT_WINDOW;
-      const latest = observedAt + UPCOMING_WINDOW;
+    function rememberTrains(activeStationId, currentTrains) {
+      const oldest = Date.now() - RECENT_WINDOW;
+      const latest = Date.now() + UPCOMING_WINDOW;
       const remembered = new Map((trainHistory[activeStationId] || []).map(train => [trainKey(train), train]));
-      const currentKeys = new Set();
-      currentTrains.forEach(train => {
-        const key = trainKey(train);
-        const previous = remembered.get(key);
-        currentKeys.add(key);
-        remembered.set(key, {
-          ...train,
-          ObservedFirstSeenAt: previous?.ObservedFirstSeenAt || observedAt,
-          ObservedLastSeenAt: observedAt,
-          ObservedPassageTime: previous?.ObservedPassageTime
-        });
-      });
-      remembered.forEach((train, key) => {
-        if (!observeDepartures || currentKeys.has(key) || train.ObservedPassageTime) return;
-        const lastSeen = Number(train.ObservedLastSeenAt);
-        const estimate = epoch(train.CalcTrainMovementTime);
-        const observationGap = observedAt - lastSeen;
-        if (Number.isFinite(lastSeen) && observationGap >= 0 && observationGap <= MAX_PASSAGE_OBSERVATION_GAP
-            && estimate <= observedAt + 2 * 60 * 1000) {
-          // The train passed between the last successful poll and this one.
-          train.ObservedPassageTime = Math.round(lastSeen + observationGap / 2);
-        }
-      });
+      currentTrains.forEach(train => remembered.set(trainKey(train), train));
       const trains = [...remembered.values()]
         .filter(train => {
           const time = epoch(train.CalcTrainMovementTime);
@@ -273,11 +256,6 @@
         // In-memory history still works when local storage is unavailable.
       }
       return trains;
-    }
-
-    function replayTimestamp(train) {
-      const observed = Number(train.ObservedPassageTime);
-      return Number.isFinite(observed) ? observed : epoch(train.CalcTrainMovementTime);
     }
 
     function videoPlayerOptions(videoId) {
@@ -319,8 +297,11 @@
       }
       player.seekTo(Math.max(0, seekTarget), true);
       player.playVideo();
+      replayPosition = Math.max(0, seekTarget);
+      replayPositionSetAt = Date.now();
       goLive.hidden = false;
-      playbackStatus.textContent = `Replaying ${label}, starting 30 seconds before its estimated arrival.`;
+      replayAdjustments.hidden = false;
+      playbackStatus.textContent = `Replaying ${label} at its Metrolink estimate. If the train is not visible, adjust by one minute.`;
       const attempt = ++replayAttempt;
       setTimeout(() => {
         if (attempt !== replayAttempt || !playerReady) return;
@@ -331,12 +312,28 @@
       }, 6000);
     }
 
+    function adjustReplay(seconds) {
+      if (!playerReady || !player || goLive.hidden) return;
+      const elapsed = Number.isFinite(replayPositionSetAt) ? (Date.now() - replayPositionSetAt) / 1000 : 0;
+      const currentTime = Number.isFinite(replayPosition) ? replayPosition + elapsed : player.getCurrentTime();
+      if (!Number.isFinite(currentTime)) return;
+      replayPosition = Math.max(0, currentTime + seconds);
+      replayPositionSetAt = Date.now();
+      replayAttempt += 1;
+      player.seekTo(replayPosition, true);
+      player.playVideo();
+      playbackStatus.textContent = `Moved ${Math.abs(seconds) / 60} minute ${seconds < 0 ? 'earlier' : 'later'}. Metrolink estimates can differ from the camera by several minutes.`;
+    }
+
     function returnToLive() {
       if (!playerReady || !player) return;
       replayAttempt += 1;
+      replayPosition = null;
+      replayPositionSetAt = null;
       player.seekTo(player.getDuration(), true);
       player.playVideo();
       goLive.hidden = true;
+      replayAdjustments.hidden = true;
       playbackStatus.textContent = 'Live camera. Choose a recent train to replay its arrival.';
     }
 
@@ -350,7 +347,10 @@
       statusLink.href = station.statusUrl;
       pendingReplay = null;
       replayAttempt += 1;
+      replayPosition = null;
+      replayPositionSetAt = null;
       goLive.hidden = true;
+      replayAdjustments.hidden = true;
       playbackStatus.textContent = 'Choose a recent train to replay its arrival.';
       if (playerReady && player) {
         player.loadVideoById(station.videoId);
@@ -375,16 +375,15 @@
 
     function trainMarkup(train, index, isRecent = false) {
       const estimate = epoch(train.CalcTrainMovementTime);
-      const replayTime = replayTimestamp(train);
       const scheduled = epoch(train.TrainMovementTime);
       const due = minutesAway(estimate);
-      const ago = minutesAgo(replayTime);
+      const ago = minutesAgo(estimate);
       const isPacific = train.RouteCode === 'PAC SURF';
       const scheduledNote = Number.isFinite(scheduled) && Math.abs(estimate - scheduled) >= 60000
         ? `<span class="scheduled">sched ${esc(train.FormattedTrainMovementTime)}</span>` : '';
       const tag = isRecent ? 'button' : 'article';
       const replayAttributes = isRecent
-        ? `type="button" data-replay-time="${replayTime}" data-replay-label="${esc(routeLabel(train.RouteCode))} #${esc(trainLabel(train))}" aria-label="Replay ${esc(routeLabel(train.RouteCode))} ${esc(trainLabel(train))} at ${esc(train.FormattedCalcTrainMovementTime)}"`
+        ? `type="button" data-replay-time="${estimate}" data-replay-label="${esc(routeLabel(train.RouteCode))} #${esc(trainLabel(train))}" aria-label="Replay ${esc(routeLabel(train.RouteCode))} ${esc(trainLabel(train))} at ${esc(train.FormattedCalcTrainMovementTime)}"`
         : (index === 0 ? 'aria-label="Next train"' : '');
       const dueMarkup = isRecent
         ? `<div class="due past"><strong>${ago} min</strong><span>Replay</span></div>`
@@ -440,7 +439,7 @@
         const stamp = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date());
         updated.textContent = `Updated ${stamp} · auto-refreshes every 60 sec`;
       } catch (error) {
-        const savedTrains = rememberTrains(stationId, [], false);
+        const savedTrains = rememberTrains(stationId, []);
         if (savedTrains.length) {
           render(savedTrains);
           updated.textContent = 'Live feed unavailable · showing recently saved estimates.';
@@ -456,6 +455,11 @@
 
     refresh.addEventListener('click', loadArrivals);
     goLive.addEventListener('click', returnToLive);
+    replayAdjustments.addEventListener('click', event => {
+      const adjustment = event.target.closest('[data-replay-skip]');
+      if (!adjustment) return;
+      adjustReplay(Number(adjustment.dataset.replaySkip));
+    });
     arrivals.addEventListener('click', event => {
       const replay = event.target.closest('[data-replay-time]');
       if (!replay) return;

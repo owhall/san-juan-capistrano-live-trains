@@ -10,7 +10,7 @@ A responsive live dashboard that pairs station cameras at San Juan Capistrano an
 - Estimated arrival times and minute-by-minute countdowns
 - Schedule variance, service status, destination, and track details
 - Two-hour recent-train history saved in the browser
-- One-click camera rewind to 30 seconds before a recent train's estimated arrival
+- One-click camera rewind to a recent train's estimated arrival, with one-minute earlier/later adjustments
 - Automatic refresh every 60 seconds
 - Responsive layout for desktop and mobile screens
 
@@ -20,7 +20,7 @@ A responsive live dashboard that pairs station cameras at San Juan Capistrano an
 - [Fullerton live camera](https://www.youtube.com/watch?v=oKwiQBAkEVU)
 - [Metrolink Train Tracker](https://metrolinktrains.com/train_status/#tab=train%20status&filter=station&option=San%20Juan%20Capistrano)
 
-Arrival estimates come from Metrolink's public real-time station schedule feed. They are estimates and may change. For camera replay, the page uses the interval in which a train disappears from the live feed as its observed passage time when consecutive polls are available, falling back to the latest arrival estimate otherwise.
+Arrival estimates come from Metrolink's public real-time station schedule feed. They are estimates and may differ from the camera by several minutes, so replay controls let you move one minute earlier or later.
 
 Recent trains are retained locally after this page observes them. Camera replay depends on footage still being available in the YouTube livestream's DVR window.
 
